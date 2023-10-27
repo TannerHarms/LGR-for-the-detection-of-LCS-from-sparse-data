@@ -2,7 +2,7 @@
 
 #%%
 
-
+import sys, os, copy
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -10,6 +10,8 @@ from scipy.interpolate import griddata, Rbf
 import numpy.linalg as la
 from sklearn.neighbors import NearestNeighbors
 
+
+sys.path.append(os.path.join(os.getcwd(), "LGR"))
 from jacobian import setRegressionFunction
 
 
@@ -46,7 +48,9 @@ def generateDF(particleList, K) -> pd.DataFrame:
             
     # Iterate through particles to get the particle indices, positions, and K nearest neighbors at each time step
     # Assumes that particles will have continuous trajectories (ie. all times filled between t[0] and t[-1])
-    for c, t in enumerate(utimes-1):
+    for c, t in enumerate(utimes):
+        if c == len(utimes)-1:
+            break
         if c % 25 == 0:
             print(f'KNN: t = {t}')
         inframe = []
@@ -167,7 +171,7 @@ def calcJacobianAndVelGrad(df, regfun=None) -> None:
         df['relF'][t] = Jacobian
         df['L'][t] = L
 
-
+# Compute the metrics on a given trajectory
 def computeMetrics(df, Tmax, metric_list='all'): 
     
     # dimension of the data
@@ -175,6 +179,31 @@ def computeMetrics(df, Tmax, metric_list='all'):
     
     # number of particles
     n_particles = np.size(df.indices[0])
+    
+    def CalcVorticity(df,idx):
+        
+        # initialize
+        n_elem = int(d*(d-1)/2)
+        vort_list = np.nan * np.ones((n_elem, n_particles))
+        
+        # valid elements
+        valid = 1-np.array(np.isnan(df['L'][idx]))[0,0]
+        valid_indices = df.indices[0][valid==1]
+        
+        for j in valid_indices:    # Loop the particles that exist the entire time
+            
+            velGrad =  df.loc[idx,'L'][:,:,j].squeeze()
+            vort = np.zeros((n_elem,1))
+            c = 0
+            for ii in range(d-1, -1, -1):
+                for jj in range(d-1, -1, -1):
+                    if jj < ii:
+                        vort[c] = velGrad[ii,jj] - velGrad[jj,ii]
+                        c += 1
+                
+            vort_list[:,j] = vort
+            
+        df['vorticity'][idx] = vort_list.squeeze()
     
     def CalcC(df, idx0, idx1):
         
@@ -184,7 +213,6 @@ def computeMetrics(df, Tmax, metric_list='all'):
         
         # Compute valid particle indices
         valid = 1-np.array(np.isnan(df['relF'][idx0] * df['relF'][idx1-1]))[0,0]
-        # valid = np.array(df['inframe'][idx0] * df['inframe'][idx1])
 
         valid_indices = df.indices[0][valid==1]
         
@@ -210,7 +238,6 @@ def computeMetrics(df, Tmax, metric_list='all'):
         
         # Compute valid indices
         valid = 1-np.array(np.isnan(df['relF'][idx0] * df['relF'][idx1-1]))[0,0]
-        # valid = np.array(df['inframe'][idx0] * df['inframe'][idx1])
         valid_indices = df.indices[0][valid==1]
         
         for i in valid_indices:
@@ -224,43 +251,43 @@ def computeMetrics(df, Tmax, metric_list='all'):
             
     def LAVD(df, idx0, idx1):
         
-        try:  
-            lavd_list = np.nan * np.ones((n_particles,1))
-            
-            # Compute valid indices (assumes continuous if true)
-            valid = 1-np.array(np.isnan(df['relF'][idx0] * df['relF'][idx1-1]))[0,0]
+        # try:  
+        lavd_list = np.nan * np.ones((n_particles,1))
+        
+        # Compute valid indices (assumes continuous if true)
+        valid = 1-np.array(np.isnan(df['relF'][idx0] * df['relF'][idx1-1]))[0,0]
 
-            valid_indices = df.indices[0][valid==1]
-            for i in range(idx0, idx1):
-                avg_vort = np.nanmean(df.loc[i,'vorticity'])
-                dt = df.loc[i+1,'time'] - df.loc[i,'time']
-                for j in valid_indices:
-                    lavd_list[j] = np.nansum((lavd_list[j],np.abs(df.loc[i,'vorticity'][j]-avg_vort)*dt))
-            
-            df['lavd'][idx0] = lavd_list
-        except:
-            return
+        valid_indices = df.indices[0][valid==1]
+        for i in range(idx0, idx1):
+            avg_vort = np.nanmean(df.loc[i,'vorticity'])
+            dt = df.loc[i+1,'time'] - df.loc[i,'time']
+            for j in valid_indices:
+                lavd_list[j] = np.nansum((lavd_list[j].squeeze(),np.abs(df.loc[i,'vorticity'][j]-avg_vort)*dt))
+        
+        df['lavd'][idx0] = lavd_list
+        # except:
+        #     return
     
     def DRA(df, idx0, idx1):
         
         # only valid for 2d flows
-        assert len(df['positions'][0]) == 2, "DRA cannot be computed for 2d flows in this implementation,"
+        assert d == 2, "DRA cannot be computed for 2d flows in this implementation,"
         
-        try:  
-            dra_list = np.nan * np.ones((n_particles,1))
-            
-            # Compute valid indices (assumes continuous if true)
-            valid = 1-np.array(np.isnan(df['relF'][idx0] * df['relF'][idx1-1]))[0,0]
-            
-            valid_indices = df.indices[0][valid==1]
-            for i in range(idx0, idx1):
-                dt = df.loc[i+1,'time'] - df.loc[i,'time']
-                for j in valid_indices:
-                    dra_list[j] = np.nansum((dra_list[j], df.loc[i,'vorticity'][j] * dt))
-            
-            df['dra'][idx0] = dra_list
-        except:
-            return
+        # try:  
+        dra_list = np.nan * np.ones((n_particles,1))
+        
+        # Compute valid indices (assumes continuous if true)
+        valid = 1-np.array(np.isnan(df['relF'][idx0] * df['relF'][idx1-1]))[0,0]
+        
+        valid_indices = df.indices[0][valid==1]
+        for i in range(idx0, idx1):
+            dt = df.loc[i+1,'time'] - df.loc[i,'time']
+            for j in valid_indices:
+                dra_list[j] = np.nansum((dra_list[j].squeeze(), df.loc[i,'vorticity'][j] * dt))
+        
+        df['dra'][idx0] = dra_list
+        # except:
+        #     return
     
     # Number of total time intervals
     n_steps = len(df.index)
@@ -270,6 +297,7 @@ def computeMetrics(df, Tmax, metric_list='all'):
         metric_list = ['ftle', 'lavd', 'dra', 'vort']
     
     # Set columns in the dataframe
+    df['vorticity'] = None
     if 'ftle' in metric_list:
         df['C'] = None
         df['ftle'] = None
@@ -279,6 +307,13 @@ def computeMetrics(df, Tmax, metric_list='all'):
         df['dra'] = None
     
     # At every time step, iterate through the particles and compute the metric fields.
+    
+    # Vorticity first:
+    for i in range(n_steps-1):
+        # Calculate vorticity
+        CalcVorticity(df,i)
+    
+    # Then finite-time emasures
     c=0
     for i in range(n_steps-1):
         
@@ -296,14 +331,15 @@ def computeMetrics(df, Tmax, metric_list='all'):
             else:
                 dt = df['time'][i+j+1] - df['time'][i+j] 
                 j += 1;  T += dt
-                
+
+        # Calculate finite-time metrics
         if T >= Tmax:
             if 'ftle' in metric_list:
                 CalcC(df,i,i+j)
                 FTLE(df,i,i+j,T)
             if 'lavd' in metric_list:
                 LAVD(df,i,i+j)
-            if 'tor' in metric_list:
+            if 'dra' in metric_list:
                 DRA(df,i,i+j)
 
 def interpolate_2D(scatteredData, gridvectors, mask=None, method='cubic'):
@@ -429,147 +465,4 @@ def generateFields(df, gridvectors, metric_list='all', approach='interp', method
         
 
 
-
-
-
-
-
-#%%
-if __name__ == "__main__":
-    
-    load_comp_data = False
-    
-    if load_comp_data:
-        comp_Data_file = '/home/tannerharms/TannerHarms/data/ParticleMaps/DoubleGyre/Structured/PM_DoubleGyre_Structured_300.0particles_t00_T20_dt0.1.pkl'
-        df = pd.read_pickle(comp_Data_file)
-        
-        nx = 100
-        xvec = np.linspace(-0.0098, 0.0798,nx)
-        yvec = np.linspace(-0.0198,0.0198,int(nx/2.5))
-        gridvectors = [xvec, yvec]
-        # generateFields(df, gridvectors, approach='interp', method='cubic')
-    else:
-        # Load in a data set
-        datafilein = r'/home/tannerharms/TannerHarms/data/ShearLayerDataSeets/ParticleMaps/ShearLayerPTV_ParticleTracks.pkl'
-        # datafilein = '/home/tannerharms/TannerHarms/data/ParticleMaps/DoubleGyre/Random/PM_DoubleGyre_Rand_100particles_t00_T25_dt0.1.pkl'
-        particleList = pd.read_pickle(datafilein)
-        
-        # save the data
-        sv = True
-        # svfldr = '/home/tannerharms/TannerHarms/data/ParticleMaps/DoubleGyre'
-        # svname = f'PM_DoubleGyre_tik_test.pkl'
-        # svpath = os.path.join(svfldr,'MetComputed',svname)
-        svpath = r'/home/tannerharms/TannerHarms/data/ShearLayerDataSeets/ParticleMaps/ShearLayerPTV_MetComputed.pkl'
-        
-        df = generateDF(particleList,45)
-        df.info(memory_usage="deep")
-        
-        # set a regression function
-        # regfun = setRegressionFunction( kernel='kernelRegression', kernel_fun='ratquad', params=None,#
-                                        # regularize=True, lam=0.00001)# kernel='radialGaussian' )#
-        regfun = setRegressionFunction()
-        # regfun = setRegressionFunction(kernel='kernelRegression', kernel_fun='rbf', params=None,#
-        #                                 regularize=True, lam=0.00000001)# regularize for stability
-        # regfun = setRegressionFunction(kernel='radialGaussian',regularize=True, lam=0.0000000001)
-        calcJacobianAndVelGrad(df, regfun=regfun)
-        
-        # save the data
-        df.to_pickle(svpath)
-        
-        computeMetrics(df, 5/190)
-        
-        # datafilein = '/home/tannerharms/TannerHarms/data/ParticleMaps/DoubleGyre/MetComputed/PM_DoubleGyre_500Particles_test_computed_nofields.pkl'
-        # df = pd.read_pickle(datafilein)
-        
-        # save the data
-        df.to_pickle(svpath)
-        
-        m2pix = 10**(-5)
-        
-        nx = 150
-        xvec = np.linspace(0, m2pix*(1920), nx)
-        yvec = np.linspace(-1200*m2pix/2,1200*m2pix/2,int(round(nx*1200/1920)))
-        # xvec = np.linspace(-0.0098, 0.0798,nx)
-        # yvec = np.linspace(-0.0198,0.0198,int(nx/2.5))
-        gridvectors = [xvec, yvec]
-        generateFields(df, gridvectors, approach='interp', method='cubic')#, method='cubic')
-        
-        # save the data
-        df.to_pickle(svpath)
-    
-    print(df.head())
-    df.info(memory_usage="deep")
-    
-    #%%
-    # nx = 100
-    # xvec = np.linspace(0,2,nx)
-    # yvec = np.linspace(0,1,int(nx/2))
-    
-    X, Y = np.meshgrid(xvec, yvec)
-    xlim = [np.min(xvec), np.max(xvec)]
-    ylim = [np.min(yvec), np.max(yvec)]
-    
-    tstep = 8
-
-    x = df.loc[tstep,'positions'][:,0]
-    y = df.loc[tstep,'positions'][:,1]
-
-    ftle = np.squeeze(df.loc[tstep,'ScalarFields']['ftle'])
-    lavd = np.squeeze(df.loc[tstep,'ScalarFields']['lavd'])
-    ftQ = np.squeeze(df.loc[tstep,'ScalarFields']['ftQ'])
-    vort = np.squeeze(df.loc[tstep,'ScalarFields']['vort'])
-
-    fig, axs = plt.subplots(2,2,sharex=True, sharey=True, figsize=[12,6])
-    plt.subplots_adjust(hspace = 0.05, wspace = 0.15)
-
-    clim = [0, np.nanmax(ftle)]
-    ftleim = axs[0,0].pcolormesh(X, Y, ftle, cmap='gray2hot', vmin=clim[0], vmax=clim[1])
-    axs[0,0].scatter(x,y, s=2, c=[[0.6, 0.6, 0.6, 0.7]])
-    axs[0,0].axis('scaled')
-    axs[0,0].set_xlim(xlim)
-    axs[0,0].set_ylim(ylim)
-    divider = make_axes_locatable(axs[0,0])
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(ftleim, cax=cax)
-    # axs[0,0].set_title('FTLE')
-
-    clim = [0, np.nanmax(lavd)]
-    lavdim = axs[0,1].pcolormesh(X, Y, lavd, cmap='viridis', vmin=clim[0], vmax=clim[1])
-    axs[0,1].scatter(x,y, s=2, c=[[0.6, 0.6, 0.6, 0.7]])
-    axs[0,1].axis('scaled')
-    axs[0,1].set_xlim(xlim)
-    axs[0,1].set_ylim(ylim)
-    divider = make_axes_locatable(axs[0,1])
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(lavdim, cax=cax)
-    # axs[0,1].set_title('LAVD')
-
-    temp = ftQ
-    cm = stitchColormaps(temp, 'pink_r','bone', 0)
-    clim = [np.nanmin(temp), np.nanmax(temp)]
-    torim = axs[1,0].pcolormesh(X, Y, temp, cmap=cm, vmin=clim[0], vmax=clim[1])
-    axs[1,0].scatter(x,y, s=2, c=[[0.6, 0.6, 0.6, 0.7]])
-    axs[1,0].axis('scaled')
-    axs[1,0].set_xlim(xlim)
-    axs[1,0].set_ylim(ylim)
-    divider = make_axes_locatable(axs[1,0])
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(torim, cax=cax)
-    # axs[1,0].set_title('TOR')
-
-    clim = [-np.abs(np.nanmax(vort)), np.abs(np.nanmax(vort))]
-    clim = [-25, 25]
-    vortim = axs[1,1].pcolormesh(X, Y, vort, cmap='bwr', vmin=clim[0], vmax=clim[1])
-    axs[1,1].scatter(x,y, s=2, c=[[0.6, 0.6, 0.6, 0.7]])
-    axs[1,1].axis('scaled')
-    axs[1,1].set_xlim(xlim)
-    axs[1,1].set_ylim(ylim)
-    divider = make_axes_locatable(axs[1,1])
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(vortim, cax=cax)
-    # axs[1,1].set_title('Vorticity')
-
-    fig.savefig('test', dpi=450)
-    
-    
 # %%

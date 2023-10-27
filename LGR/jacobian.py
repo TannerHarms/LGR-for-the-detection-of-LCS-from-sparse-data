@@ -22,9 +22,8 @@ def setRegressionFunction(kernel:str=None, lam:float=None, sig:float=None ):
         I = np.eye(dims)                
 
         # Set the kernel for the regression.
-        if kernel is None:
-            K = np.eye(M)
-        elif kernel == 'radialGaussian':
+        K = np.eye(M)
+        if kernel == 'radialGaussian':
             if sig is None: 
                 # Compute kernel standard deviation from data
                 sigma = np.std(np.linalg.norm(X0, axis=0))
