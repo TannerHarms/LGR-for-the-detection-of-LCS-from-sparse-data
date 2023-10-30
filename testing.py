@@ -7,13 +7,12 @@ from LGR.classes import *
 from LGR.plotting import *
 from Flows.Flows import *
 
-# Generate random trajectory data for the double gyre flow
+# Generate structured trajectory data for the double gyre flow
 
-# basic parameters:
+# Flow type and duration:
 flowname = "Gyre"
-n_particles = 100
-n_steps = 10
-dt = 0.1    
+n_steps = 100
+dt = 0.25    
 
 # optional parameters
 parameters = {  # These are specified as defaults as well. 
@@ -25,61 +24,67 @@ parameters = {  # These are specified as defaults as well.
 # Initialize the flow 
 flow = Flow()
 
-# Generate random initial conditions on domain [[0,2],[0,1]] -> [x, y]
-ICs = np.random.rand(n_particles,2)
-ICs[:,0] *= 2
+# Now, make vectors associated with each axis.
+domain = np.array([[0, 2],[0, 1]])
+n_y = 50            # number of rows
+n_x = 2*n_y         # number of columns
+eps = 0.001         # for visualization
+y_vec = np.linspace(domain[1,0]+eps, domain[1,1]-eps, n_y)     # 25 rows
+x_vec = np.linspace(domain[0,0]+eps, domain[0,1]-eps, n_x)     # 50 columns
+
+# Then, make the mesh grid and flatten it to get a single vector of positions.  
+mesh = np.meshgrid(x_vec, y_vec)
+x = mesh[0].reshape(-1,1)
+y = mesh[1].reshape(-1,1)
+ICs = np.append(x, y, axis=1)
 
 # Generate a time vector
 tvec = np.linspace(0, dt*n_steps, n_steps) 
 
 # Generate the trajectories
-flow.predefined_function(flowname, ICs, tvec, parameters=parameters)
+flow.predefined_function(flowname, ICs, tvec, parameters=parameters, include_gradv=True)
 flow.integrate_trajectories()
 trajectories = flow.states
 
-# Generate a list of particles
-particleList = []
-for i in range(n_particles):
-    state = np.squeeze(trajectories[i,:,:])
-    particleList.append(SimpleParticle(state, tvec, i))
+# Define functions to compute flow map jacobians along a trajectory
+
+# Compute the flow map jacobian for a single time step from the velocity gradient
+def computeFMJ(pos, time, dt, gradient_function):
+    return gradient_function(pos, time)*dt + np.eye(len(pos))
+
+# Accumulate short-time jacobians using composition
+def processTrajectory(trajectory, times, gradient_function):
     
-# plot the trajectories
-plot_trajectories(trajectories)
-
-# Set computational parameters
-t = 15              # time duration for LCS analysis
-kNN = 15            # Number of nearest neighbors to find for each particle
-reg_type = 'None'   # 'None' or 'radialGaussian'
-sigma = None        # standard deviation if reg_type is radial_gaussian
-lam = 0.000000001   # Regularizer for the regression 
-nx = 150            # grid length in x for interpolation (plotting)
-
-# Generate the regression function
-regfun = setRegressionFunction(kernel=reg_type, lam=lam, sig=sigma)
-
-# specify which metrics to compute
-metrics = ["ftle", "lavd", "dra", "vort"]
-
-# Generate a data frame
-df = generateDF(particleList, kNN)
-n_particles = len(df['indices'][0])
-
-# Perform the regressions
-calcJacobianAndVelGrad(df, regfun=regfun)
-
-# Compute the metrics on each particle trajectory
-computeMetrics(df, t, metric_list=metrics)
-
-# Interpolate the metrics onto a grid assuming the double gyre flow.
-xvec = np.linspace(0,2,nx)
-yvec = np.linspace(0,1,int(nx/2))   # square cells on the double gyre flow
-gridvectors = [xvec, yvec]
-if n_particles < 1000:
-    generateFields(df, gridvectors, approach='rbf', method='multiquadric')
-    interpstr = 'rbf_mq'
-else:
-    generateFields(df, gridvectors, approach='interp', method='cubic')
-    interpstr = 'int3'
+    assert(len(trajectory) == len(times))
     
-# plot the results
-plotAllMetrics(df, xvec, yvec, tstep=0)
+    jacobian = np.eye(len(trajectory[0]))
+    for i in range(len(times)-1):
+        t0 = times[i]
+        dt = times[i+1]-t0
+        pos0 = trajectory[i]
+        gradF = computeFMJ(pos0, t0, dt, gradient_function)
+        
+        jacobian = gradF @ jacobian
+    
+    return jacobian
+
+# Compute the ftle from a jacobian.
+def computeFTLE(jacobian, dt):
+    U, S, VT = np.linalg.svd(jacobian)
+    lam_max = S[0]
+    return 1/np.abs(dt)*np.log(lam_max)
+
+# Compute the ftle for every trajectory (using only that trajectory)
+ftle = np.zeros((np.shape(trajectories)[0],1))
+for i in range(np.shape(trajectories)[0]):
+    traj = trajectories[i,:,:].squeeze()
+    jacobian = processTrajectory(traj, tvec, flow.gradv_function)
+    ftle[i] = computeFTLE(jacobian, tvec[-1] - tvec[0])
+    
+# plotting
+ftle_field = ftle.reshape(np.shape(mesh[0]))
+
+clim = [0, 0.4]
+plt.pcolormesh(mesh[0], mesh[1], ftle_field, cmap='gray2hot')
+plt.axis('scaled')
+plt.show()

@@ -11,12 +11,13 @@ import numpy.linalg as la
 from sklearn.neighbors import NearestNeighbors
 
 
+sys.path.append(os.path.join(os.getcwd(), "ComputingTrajectories","LGR"))
 sys.path.append(os.path.join(os.getcwd(), "LGR"))
 from jacobian import setRegressionFunction
 
 
 # Convert an arbitrary list of particles to a time-oriented data frame:
-def generateDF(particleList, K) -> pd.DataFrame:
+def generateDF(particleList, K, t_range=None) -> pd.DataFrame:
     # Generate a time-oriented data frame where each row represents a time step
     
     # For the KNN algorithm:
@@ -30,7 +31,7 @@ def generateDF(particleList, K) -> pd.DataFrame:
     n_particles = len(particleList)
     
     # Create a data frame with the appropriate columns. 
-    columnNames = ['time','inframe','indices','positions','KNN']
+    columnNames = ['time','inframe','valid','indices','positions','KNN']
     df = pd.DataFrame(columns=columnNames)
     
     # Get a list of all times that particles are observed:
@@ -45,6 +46,8 @@ def generateDF(particleList, K) -> pd.DataFrame:
             diff = np.setdiff1d(time, utimes)
             times = np.append(times, diff)
     np.sort(utimes)
+    if not t_range is None:
+        utimes = utimes[(utimes > t_range[0]) & (utimes < t_range[1])]
             
     # Iterate through particles to get the particle indices, positions, and K nearest neighbors at each time step
     # Assumes that particles will have continuous trajectories (ie. all times filled between t[0] and t[-1])
@@ -54,40 +57,52 @@ def generateDF(particleList, K) -> pd.DataFrame:
         if c % 25 == 0:
             print(f'KNN: t = {t}')
         inframe = []
+        valid = []
         indices = []
         positions = []
         for i,p in enumerate(particleList):
             indices.append(i)
             # If the particle is in the domain at time t and at time t+1
-            if t >= p.t[0] and t <= p.t[-1] and utimes[c+1] >= p.t[0] and utimes[c+1] <= p.t[-1]:
+            if t >= p.t[0] and t <= p.t[-1]:
                 inframe.append(1)
                 tidx = np.argmin(np.abs(p.t - t))   # What is the index of the particle trajectory at time t?
                 pos_at_t = p.pos[tidx,:]            # Position at time t for particle p
                 positions.append(pos_at_t)
+                if utimes[c+1] >= p.t[0] and utimes[c+1] <= p.t[-1]:
+                    valid.append(1)
+                else:
+                    valid.append(0)
             else:
                 inframe.append(0)
+                valid.append(0)
                 positions.append(np.nan * np.ones(d))
         
         inframe = np.array(inframe)         # Particles that are in the frame at this time
         positions = np.array(positions)     # Positions of those particles
+        valid = np.array(valid)             # valid for computing the jacobian
         indices = np.array(indices)         # The global indices of those particles
         
         # Get valid positions and indices at the given time for KNN purposes
-        valid_pos = positions[np.array(inframe)==1]
-        valid_idx = indices[np.array(inframe)==1]
+        # This way only neighbors that persist from this time to the next are used in computations
+        valid_pos = positions[np.array(valid)==1]
+        valid_idx = indices[np.array(valid)==1]
         
         # Get the k nearest neighbors
         knn = np.nan * np.ones((n_particles, K))
-        neigh = NearestNeighbors(n_neighbors=K).fit(valid_pos)
-        knn_indices = neigh.kneighbors(valid_pos, return_distance=False)
-        for i, v in enumerate(valid_idx):
-            global_knn_indices = np.array([valid_idx[j] for j in knn_indices[i,:].tolist()]) # indices assoc. with global particle map
-            knn[v,:] = np.copy(global_knn_indices)
+        try:
+            neigh = NearestNeighbors(n_neighbors=K).fit(valid_pos)
+            knn_indices = neigh.kneighbors(valid_pos, return_distance=False)
+            for i, v in enumerate(valid_idx):
+                global_knn_indices = valid_idx[knn_indices[i]] # indices assoc. with global particle map
+                knn[v,:] = np.copy(global_knn_indices)
+        except:
+            pass
 
         # Update thge dataframe
         new_row = pd.Series({
             'time' : t,
             'inframe' : inframe,
+            'valid' : valid,
             'indices' : indices,
             'positions' : positions,
             'KNN' : knn
@@ -129,7 +144,7 @@ def calcJacobianAndVelGrad(df, regfun=None) -> None:
         dt = df1['time'] - df0['time']
         
         # keep overlapping indices only.
-        valid_indices = df0.inframe   
+        valid_indices = df0.valid   
         
         # Allocate array of Jacobians for particle i
         Jacobian = np.nan * np.ones((d,d,n_particles))
