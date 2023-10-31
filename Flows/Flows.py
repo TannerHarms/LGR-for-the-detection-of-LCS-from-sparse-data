@@ -38,8 +38,8 @@ class Flow:
         self.states: np.ndarray = None
         
     def predefined_function(self, function_name: str, 
-                            initial_conditions: np.ndarray,
-                            time_vector: np.ndarray,
+                            initial_conditions: np.ndarray = None,
+                            time_vector: np.ndarray = None,
                             parameters: dict[str, any]=None,
                             include_gradv: bool=False,
                             integrator_options: dict[str, any]=None):
@@ -67,12 +67,26 @@ class Flow:
         
     def custom_function(self, function_name: str, 
                         function_generator: Callable,
-                        initial_conditions: np.ndarray,
-                        time_vector: np.ndarray,
-                        parameters: dict[str, any],
+                        initial_conditions: np.ndarray = None,
+                        time_vector: np.ndarray = None,
+                        parameters: dict[str, any] = None,
                         include_gradv: bool=False,
                         integrator_options: dict[str, any]=None):
-        pass # TODO
+        self.flowname = function_name
+        self.function_generator = function_generator
+        self.initial_conditions = initial_conditions
+        self.time_vector = time_vector
+        self.parameters = parameters
+        if self.include_gradv:
+            try:
+                self.flow_function, self.gradv_function = self.function_generator(self.parameters, self.include_gradv)
+            except:
+                ValueError("function_generator is not configured for gradients.")
+        else:
+            try:
+                self.flow_function = self.function_generator(self.parameters)
+            except:
+                ValueError("function_generator is not properly configured.")
         
     def integrate_trajectories(self):
         # initialize the states array

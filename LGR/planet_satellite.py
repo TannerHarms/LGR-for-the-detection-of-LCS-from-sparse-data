@@ -1,15 +1,16 @@
+'''
+Framework for computing jacobians using the planet-satellite type approach schematized
+in figure 2.c.i of the paper.  The Jacobian is approximated using finite differences.
+The code can be run using resampling at each timestep specified in the vector 'times'
+or can be set to use only the initial and final particle positions in their computation.
+'''
 
-#%%
 import sys, copy, os
 import numpy as np
 
-from LGR.lgr import *
-from LGR.jacobian import *
-from LGR.classes import *
-from LGR.plotting import *
 from Flows.Flows import *
 
-# Create a class that marks a planet-satellite type particle.
+# A class that marks a planet-satellite type particle.
 # For this example, we will just implement finite-differences for gradient computation.
 class PSParticle:
     
@@ -172,90 +173,3 @@ class PSParticle:
     def computeFTLE(self):
         U, S, VT = np.linalg.svd(self.jacobian)
         return 1/np.abs(self.t[-1]-self.t[0])*np.log(S[0])
-        
-        
-if __name__ == "__main__":
-    
-    # Generate structured trajectory data for the double gyre flow
-
-    # Flow type and duration:
-    flowname = "Gyre"
-    n_steps = 50
-    dt = 0.25    
-
-    # optional parameters
-    parameters = {  # These are specified as defaults as well. 
-        "A": 0.1,
-        "epsilon": 0.1,
-        "omega":2*np.pi/10
-    }
-
-    # Initialize the flow 
-    flow = Flow()
-    flow.predefined_function(flowname)
-    flow_c = copy.deepcopy(flow)
-
-    # Now, make vectors associated with each axis.
-    domain = np.array([[0, 2],[0, 1]])
-    n_y = 25            # number of rows
-    n_x = 2*n_y         # number of columns
-    eps = 0.0001        # for visualization
-    y_vec = np.linspace(domain[1,0]+eps, domain[1,1]-eps, n_y+1)     # 25 rows
-    x_vec = np.linspace(domain[0,0]+eps, domain[0,1]-eps, n_x+1)     # 50 columns
-
-    # Then, make the mesh grid and flatten it to get a single vector of positions.  
-    mesh = np.meshgrid(x_vec, y_vec)
-    # x = mesh[0].reshape(-1,1)
-    # y = mesh[1].reshape(-1,1)
-    # ICs = np.append(x, y, axis=1)
-    
-    # Generate a time vector
-    tvec = np.linspace(0, dt*n_steps, n_steps+1) 
-    
-    # Create PS particles for jacobian computations.
-    dx = 0.001
-    ftle_field_resampled = np.zeros((len(y_vec), len(x_vec)))
-    ftle_field_traditional = np.zeros((len(y_vec), len(x_vec)))
-    c=0
-    pvals = []
-    for i, y in enumerate(y_vec):
-        for j, x in enumerate(x_vec):
-            
-            if c % 25 == 0:
-                print(f"particle {c} out of {len(y_vec) * len(x_vec)}")
-            
-            ic = np.array([x,y])
-            
-            # compute FTLE without resampling
-            p_traditional = PSParticle(flow_c, np.copy(ic), tvec, dx, domain=domain, resample=False)
-            ftle_field_traditional[i,j] = p_traditional.ftle
-            
-            # compute FTLE with resampling
-            p_resampled = PSParticle(flow, np.copy(ic), tvec, dx, domain=domain, resample=True)
-            ftle_field_resampled[i,j] = p_resampled.ftle
-
-            pvals.append(p_traditional)
-            c+=1 
-        
-
-    # Plot an example to see if it is working
-    #%%
-    
-    fig, axs = plt.subplots(1,2)
-    
-    clim = [0,0.5]
-    
-    ftleim = axs[1].pcolormesh(mesh[0], mesh[1], ftle_field_resampled, cmap="gray2hot", vmin=clim[0], vmax=clim[1])
-    axs[1].axis('scaled')
-    axs[1].set_title('FTLE with resampling')
-    divider = make_axes_locatable(axs[1])
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(ftleim, cax=cax)
-    
-    axs[0].pcolormesh(mesh[0], mesh[1], ftle_field_traditional, cmap="gray2hot", vmin=clim[0], vmax=clim[1])
-    axs[0].axis('scaled')
-    axs[0].set_title('FTLE without resampling')
-    
-    plt.show()
-    
-    #%%
