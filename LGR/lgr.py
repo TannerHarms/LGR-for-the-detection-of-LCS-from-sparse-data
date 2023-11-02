@@ -52,8 +52,6 @@ def generateDF(particleList, K, t_range=None) -> pd.DataFrame:
     # Iterate through particles to get the particle indices, positions, and K nearest neighbors at each time step
     # Assumes that particles will have continuous trajectories (ie. all times filled between t[0] and t[-1])
     for c, t in enumerate(utimes):
-        if c == len(utimes)-1:
-            break
         if c % 25 == 0:
             print(f'KNN: t = {t}')
         inframe = []
@@ -68,10 +66,11 @@ def generateDF(particleList, K, t_range=None) -> pd.DataFrame:
                 tidx = np.argmin(np.abs(p.t - t))   # What is the index of the particle trajectory at time t?
                 pos_at_t = p.pos[tidx,:]            # Position at time t for particle p
                 positions.append(pos_at_t)
-                if utimes[c+1] >= p.t[0] and utimes[c+1] <= p.t[-1]:
-                    valid.append(1)
-                else:
-                    valid.append(0)
+                if not c == len(utimes)-1:
+                    if utimes[c+1] >= p.t[0] and utimes[c+1] <= p.t[-1]:
+                        valid.append(1)
+                    else:
+                        valid.append(0)
             else:
                 inframe.append(0)
                 valid.append(0)
@@ -81,6 +80,19 @@ def generateDF(particleList, K, t_range=None) -> pd.DataFrame:
         positions = np.array(positions)     # Positions of those particles
         valid = np.array(valid)             # valid for computing the jacobian
         indices = np.array(indices)         # The global indices of those particles
+        
+        # If in the last row, set time and position characteristics.  
+        if c == len(utimes)-1:
+            new_row = pd.Series({
+                'time' : t,
+                'inframe' : inframe,
+                'valid' : valid,
+                'indices' : indices,
+                'positions' : positions,
+                'KNN' : []
+            })
+            df = pd.concat([df, new_row.to_frame().T], ignore_index=True)  
+            break
         
         # Get valid positions and indices at the given time for KNN purposes
         # This way only neighbors that persist from this time to the next are used in computations
@@ -222,87 +234,87 @@ def computeMetrics(df, Tmax, metric_list='all'):
     
     def CalcC(df, idx0, idx1):
         
-        # try:
-        # Objective calculation of C from compositions
-        C_list = np.nan * np.ones((d,d, n_particles))
-        
-        # Compute valid particle indices
-        valid = 1-np.array(np.isnan(df['relF'][idx0] * df['relF'][idx1-1]))[0,0]
+        try:
+            # Objective calculation of C from compositions
+            C_list = np.nan * np.ones((d,d, n_particles))
+            
+            # Compute valid particle indices
+            valid = 1-np.array(np.isnan(df['relF'][idx0] * df['relF'][idx1-1]))[0,0]
 
-        valid_indices = df.indices[0][valid==1]
-        
-        for j in valid_indices:    # Loop the particles that exist the entire time
+            valid_indices = df.indices[0][valid==1]
             
-            A = np.eye(d)
-            for t in range(idx0, idx1):  # Loop the time indices
-                A = df.loc[t,'relF'][:,:,j] @ A
+            for j in valid_indices:    # Loop the particles that exist the entire time
                 
-            C = A.T @ A
-            C_list[:,:,j] = C
-            
-            
-        df['C'][idx0] = C_list
-        # except:
-        #     # raise ValueError('Error computing C')
-        #     return
+                A = np.eye(d)
+                for t in range(idx0, idx1):  # Loop the time indices
+                    A = df.loc[t,'relF'][:,:,j] @ A
+                    
+                C = A.T @ A
+                C_list[:,:,j] = C
+                
+                
+            df['C'][idx0] = C_list
+        except:
+            # raise ValueError('Error computing C')
+            return
                 
     def FTLE(df, idx0, idx1, T):
         
-        # try:
-        ftle_list = np.nan * np.ones((n_particles,1))
-        
-        # Compute valid indices
-        valid = 1-np.array(np.isnan(df['relF'][idx0] * df['relF'][idx1-1]))[0,0]
-        valid_indices = df.indices[0][valid==1]
-        
-        for i in valid_indices:
-            C = df.loc[idx0,'C'][:,:,i]
-            lam, _ = la.eig(C)     
-            ftle = 1./np.abs(T)*np.log(np.sqrt(np.max(lam)))
-            ftle_list[i] = ftle
-        df['ftle'][idx0] = ftle_list
-        # except:
-        #     return
+        try:
+            ftle_list = np.nan * np.ones((n_particles,1))
+            
+            # Compute valid indices
+            valid = 1-np.array(np.isnan(df['relF'][idx0] * df['relF'][idx1-1]))[0,0]
+            valid_indices = df.indices[0][valid==1]
+            
+            for i in valid_indices:
+                C = df.loc[idx0,'C'][:,:,i]
+                lam, _ = la.eig(C)     
+                ftle = 1./np.abs(T)*np.log(np.sqrt(np.max(lam)))
+                ftle_list[i] = ftle
+            df['ftle'][idx0] = ftle_list
+        except:
+            return
             
     def LAVD(df, idx0, idx1):
         
-        # try:  
-        lavd_list = np.nan * np.ones((n_particles,1))
-        
-        # Compute valid indices (assumes continuous if true)
-        valid = 1-np.array(np.isnan(df['relF'][idx0] * df['relF'][idx1-1]))[0,0]
+        try:  
+            lavd_list = np.nan * np.ones((n_particles,1))
+            
+            # Compute valid indices (assumes continuous if true)
+            valid = 1-np.array(np.isnan(df['relF'][idx0] * df['relF'][idx1-1]))[0,0]
 
-        valid_indices = df.indices[0][valid==1]
-        for i in range(idx0, idx1):
-            avg_vort = np.nanmean(df.loc[i,'vorticity'])
-            dt = df.loc[i+1,'time'] - df.loc[i,'time']
-            for j in valid_indices:
-                lavd_list[j] = np.nansum((lavd_list[j].squeeze(),np.abs(df.loc[i,'vorticity'][j]-avg_vort)*dt))
-        
-        df['lavd'][idx0] = lavd_list
-        # except:
-        #     return
+            valid_indices = df.indices[0][valid==1]
+            for i in range(idx0, idx1):
+                avg_vort = np.nanmean(df.loc[i,'vorticity'])
+                dt = df.loc[i+1,'time'] - df.loc[i,'time']
+                for j in valid_indices:
+                    lavd_list[j] = np.nansum((lavd_list[j].squeeze(),np.abs(df.loc[i,'vorticity'][j]-avg_vort)*dt))
+            
+            df['lavd'][idx0] = lavd_list
+        except:
+            return
     
     def DRA(df, idx0, idx1):
         
         # only valid for 2d flows
         assert d == 2, "DRA cannot be computed for 2d flows in this implementation,"
         
-        # try:  
-        dra_list = np.nan * np.ones((n_particles,1))
-        
-        # Compute valid indices (assumes continuous if true)
-        valid = 1-np.array(np.isnan(df['relF'][idx0] * df['relF'][idx1-1]))[0,0]
-        
-        valid_indices = df.indices[0][valid==1]
-        for i in range(idx0, idx1):
-            dt = df.loc[i+1,'time'] - df.loc[i,'time']
-            for j in valid_indices:
-                dra_list[j] = np.nansum((dra_list[j].squeeze(), df.loc[i,'vorticity'][j] * dt))
-        
-        df['dra'][idx0] = dra_list
-        # except:
-        #     return
+        try:  
+            dra_list = np.nan * np.ones((n_particles,1))
+            
+            # Compute valid indices (assumes continuous if true)
+            valid = 1-np.array(np.isnan(df['relF'][idx0] * df['relF'][idx1-1]))[0,0]
+            
+            valid_indices = df.indices[0][valid==1]
+            for i in range(idx0, idx1):
+                dt = df.loc[i+1,'time'] - df.loc[i,'time']
+                for j in valid_indices:
+                    dra_list[j] = np.nansum((dra_list[j].squeeze(), df.loc[i,'vorticity'][j] * dt))
+            
+            df['dra'][idx0] = dra_list
+        except:
+            return
     
     # Number of total time intervals
     n_steps = len(df.index)

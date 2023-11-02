@@ -141,7 +141,7 @@ class PSParticle:
         c = 0
         for i in range(self.dim):
             c = 2*i
-            # the pertubation in dimension i
+            # the deformation in dimension i
             DimVec = np.array([X1[c,:], np.zeros([self.dim]), X1[c+1,:]])
             
             # Manage NaNs.  
@@ -180,7 +180,7 @@ if __name__ == "__main__":
 
     # Flow type and duration:
     flowname = "Gyre"
-    n_steps = 50
+    n_steps = int(15/0.25)
     dt = 0.25    
 
     # optional parameters
@@ -197,9 +197,9 @@ if __name__ == "__main__":
 
     # Now, make vectors associated with each axis.
     domain = np.array([[0, 2],[0, 1]])
-    n_y = 25            # number of rows
+    n_y = 50            # number of rows
     n_x = 2*n_y         # number of columns
-    eps = 0.0001        # for visualization
+    eps = 0.1001        # for visualization
     y_vec = np.linspace(domain[1,0]+eps, domain[1,1]-eps, n_y+1)     # 25 rows
     x_vec = np.linspace(domain[0,0]+eps, domain[0,1]-eps, n_x+1)     # 50 columns
 
@@ -213,7 +213,7 @@ if __name__ == "__main__":
     tvec = np.linspace(0, dt*n_steps, n_steps+1) 
     
     # Create PS particles for jacobian computations.
-    dx = 0.001
+    dx = 0.1
     ftle_field_resampled = np.zeros((len(y_vec), len(x_vec)))
     ftle_field_traditional = np.zeros((len(y_vec), len(x_vec)))
     c=0
@@ -233,8 +233,6 @@ if __name__ == "__main__":
             # compute FTLE with resampling
             p_resampled = PSParticle(flow, np.copy(ic), tvec, dx, domain=domain, resample=True)
             ftle_field_resampled[i,j] = p_resampled.ftle
-
-            pvals.append(p_traditional)
             c+=1 
         
 

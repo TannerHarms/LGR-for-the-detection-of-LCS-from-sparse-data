@@ -111,7 +111,7 @@ def stitchColormaps(data, cm1, cm2, stitch_at='mid', name='stitched_cmap'):
     
 
 # A function for plotting all metrics from random data.
-def plotAllMetrics(df, xvec, yvec, tstep=100):
+def plotAllMetrics(df, xvec, yvec, tstep=100, particles=True):
     X, Y = np.meshgrid(xvec, yvec)
     xlim = [np.min(xvec), np.max(xvec)]
     ylim = [np.min(yvec), np.max(yvec)]
@@ -131,7 +131,8 @@ def plotAllMetrics(df, xvec, yvec, tstep=100):
 
     clim = [0, np.nanmax(ftle)]
     ftleim = axs[0,0].pcolormesh(X, Y, ftle, cmap='gray2hot', vmin=clim[0], vmax=clim[1])
-    axs[0,0].scatter(x,y, s=2, c=[[0.6, 0.6, 0.6, 0.7]])
+    if particles:
+        axs[0,0].scatter(x,y, s=2, c=[[0.6, 0.6, 0.6, 0.7]])
     axs[0,0].axis('scaled')
     axs[0,0].set_xlim(xlim)
     axs[0,0].set_ylim(ylim)
@@ -142,7 +143,8 @@ def plotAllMetrics(df, xvec, yvec, tstep=100):
 
     clim = [0, np.nanmax(lavd)]
     lavdim = axs[0,1].pcolormesh(X, Y, lavd, cmap='gray2cool', vmin=clim[0], vmax=clim[1])
-    axs[0,1].scatter(x,y, s=2, c=[[0.6, 0.6, 0.6, 0.7]])
+    if particles:
+        axs[0,1].scatter(x,y, s=2, c=[[0.6, 0.6, 0.6, 0.7]])
     axs[0,1].axis('scaled')
     axs[0,1].set_xlim(xlim)
     axs[0,1].set_ylim(ylim)
@@ -153,7 +155,8 @@ def plotAllMetrics(df, xvec, yvec, tstep=100):
 
     clim = [-np.nanmax(np.abs(dra)), np.nanmax(np.abs(dra))]
     torim = axs[1,0].pcolormesh(X, Y, dra, cmap='highContrast_b2r_white', vmin=clim[0], vmax=clim[1])
-    axs[1,0].scatter(x,y, s=2, c=[[0.6, 0.6, 0.6, 0.7]])
+    if particles:
+        axs[1,0].scatter(x,y, s=2, c=[[0.6, 0.6, 0.6, 0.7]])
     axs[1,0].axis('scaled')
     axs[1,0].set_xlim(xlim)
     axs[1,0].set_ylim(ylim)
@@ -164,7 +167,8 @@ def plotAllMetrics(df, xvec, yvec, tstep=100):
 
     clim = [-np.nanmax(np.abs(vort)), np.nanmax(np.abs(vort))]
     vortim = axs[1,1].pcolormesh(X, Y, vort, cmap='bwr', vmin=clim[0], vmax=clim[1])
-    axs[1,1].scatter(x,y, s=2, c=[[0.6, 0.6, 0.6, 0.7]])
+    if particles:
+        axs[1,1].scatter(x,y, s=2, c=[[0.6, 0.6, 0.6, 0.7]])
     axs[1,1].axis('scaled')
     axs[1,1].set_xlim(xlim)
     axs[1,1].set_ylim(ylim)
