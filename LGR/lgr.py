@@ -195,8 +195,8 @@ def calcJacobianAndVelGrad(df, regfun=None) -> None:
                 L[:, :, i] = newL
 
         # Store
-        df['relF'][t] = Jacobian
-        df['L'][t] = L
+        df.at[t, "relF"] = Jacobian
+        df.at[t, "L"]  = L
 
 
 # Compute the metrics on a given trajectory
@@ -231,7 +231,7 @@ def computeMetrics(df, Tmax, metric_list='all'):
 
             vort_list[:, j] = vort
 
-        df['vorticity'][idx] = vort_list.squeeze()
+        df.at[idx, "vorticity"] = vort_list.squeeze()
 
     def CalcC(df, idx0, idx1):
 
@@ -254,7 +254,7 @@ def computeMetrics(df, Tmax, metric_list='all'):
                 C = A.T @ A
                 C_list[:, :, j] = C
 
-            df['C'][idx0] = C_list
+            df.at[idx0, "C"]  = C_list
         except Exception:
             return
 
@@ -273,7 +273,7 @@ def computeMetrics(df, Tmax, metric_list='all'):
                 lam, _ = la.eig(C)
                 ftle = 1./np.abs(T)*np.log(np.sqrt(np.max(lam)))
                 ftle_list[i] = ftle
-            df['ftle'][idx0] = ftle_list
+            df.at[idx0, "ftle"]  = ftle_list
         except Exception:
             return
 
@@ -295,7 +295,7 @@ def computeMetrics(df, Tmax, metric_list='all'):
                                               np.abs(df.loc[i, 'vorticity'][j]
                                                      - avg_vort)*dt))
 
-            df['lavd'][idx0] = lavd_list
+            df.at[idx0, "lavd"]  = lavd_list
         except Exception:
             return
 
@@ -318,7 +318,7 @@ def computeMetrics(df, Tmax, metric_list='all'):
                     dra_list[j] = np.nansum((dra_list[j].squeeze(),
                                              df.loc[i, 'vorticity'][j] * dt))
 
-            df['dra'][idx0] = dra_list
+            df.at[idx0, "dra"]  = dra_list
         except Exception:
             return
 
@@ -500,7 +500,7 @@ def generateFields(df, gridvectors, metric_list='all', approach='interp',
                     continue
 
         # Data managment
-        df['ScalarFields'][t] = scalarFields
+        df.at[t, 'ScalarFields'] = scalarFields
         fieldsList.append(scalarFields)
 
     # output value if specified

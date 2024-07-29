@@ -122,8 +122,8 @@ def plotAllMetrics(df, xvec, yvec, tstep=100, particles=True):
 
     tstep = tstep
 
-    x = df.loc[tstep, 'positions'][: 0]
-    y = df.loc[tstep, 'positions'][: 1]
+    x = df.loc[tstep, 'positions'][:, 0]
+    y = df.loc[tstep, 'positions'][:, 1]
 
     ftle = np.squeeze(df.loc[tstep, 'ScalarFields']['ftle'])
     lavd = np.squeeze(df.loc[tstep, 'ScalarFields']['lavd'])
@@ -133,7 +133,7 @@ def plotAllMetrics(df, xvec, yvec, tstep=100, particles=True):
     fig, axs = plt.subplots(2, 2, sharex=True, sharey=True, figsize=[12, 6])
     plt.subplots_adjust(hspace=0.05, wspace=0.15)
 
-    clim = [0, np.nanmax(ftle)]
+    clim = [0, np.nanmax(ftle) - 0.25 * np.nanmax(ftle)]
     ftleim = axs[0, 0].pcolormesh(X, Y, ftle, cmap='gray2hot',
                                   vmin=clim[0], vmax=clim[1])
     if particles:
@@ -209,5 +209,3 @@ def plot_trajectories(trajectories, cmap_name='rainbow'):
         x_vals = trajectories[i, :, 0]
         y_vals = trajectories[i, :, 1]
         ax.plot(x_vals, y_vals, color=colors[i, :])
-
-    plt.show()
